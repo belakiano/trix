@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trix - Editor de PDF Inteligente</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0a0a0a;
+        }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .loader {
+            border-top-color: #a855f7; /* Roxo mais vivo */
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        #message-box { display: none; transition: opacity 0.5s; }
+        .upload-area:hover {
+            border-color: #a855f7;
+        }
+    </style>
+</head>
+<body class="bg-black text-gray-200">
+
+    <div class="container mx-auto p-4 md:p-8 max-w-4xl">
+        <header class="text-center mb-10">
+            <div class="flex items-center justify-center gap-3 mb-2">
+                 <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-purple-500"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path><polyline points="14 2 14 8 20 8"></polyline><path d="m10 14-2 2 2 2"></path><path d="m14 18 2-2-2-2"></path></svg>
+                <h1 class="text-4xl md:text-5xl font-extrabold text-white">Trix</h1>
+            </div>
+            <p class="text-lg text-gray-400">Edite e extraia capítulos dos seus PDFs com facilidade.</p>
+        </header>
+
+        <div class="bg-gray-900/50 backdrop-blur-sm border border-gray-800 rounded-2xl shadow-2xl shadow-purple-900/10 p-6 md:p-8">
+            <!-- Caixa de Mensagem -->
+            <div id="message-box" class="p-4 mb-4 rounded-md"></div>
+
+            <!-- Input do Ficheiro PDF -->
+            <div class="mb-6">
+                <label for="pdf-upload" class="block text-lg font-semibold mb-2 text-gray-300">Carregar Ficheiro(s) PDF</label>
+                <div class="flex items-center justify-center w-full">
+                    <label for="pdf-upload" class="upload-area flex flex-col items-center justify-center w-full h-48 border-2 border-gray-700 border-dashed rounded-lg cursor-pointer bg-gray-800/50 hover:bg-gray-800 transition-all duration-300">
+                        <div class="flex flex-col items-center justify-center pt-5 pb-6">
+                            <svg class="w-10 h-10 mb-3 text-gray-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0l-3.75 3.75M12 9.75l3.75 3.75M3 17.25V6.75A2.25 2.25 0 015.25 4.5h13.5A2.25 2.25 0 0121 6.75v10.5A2.25 2.25 0 0118.75 19.5H5.25A2.25 2.25 0 013 17.25z" />
+                            </svg>
+                            <p class="mb-2 text-sm text-gray-400"><span class="font-semibold text-purple-400">Clique para carregar</span> ou arraste e solte</p>
+                            <p class="text-xs text-gray-500">Pode selecionar múltiplos ficheiros PDF</p>
+                        </div>
+                        <input id="pdf-upload" type="file" class="hidden" accept=".pdf" multiple />
+                    </label>
+                </div>
+                <div id="file-list" class="text-center mt-3 text-gray-400"></div>
+            </div>
+
+            <!-- Abas de Funcionalidades -->
+            <div class="border-b border-gray-700 mb-6">
+                <nav class="flex space-x-4 -mb-px" aria-label="Tabs">
+                    <button id="tab-split" class="tab-button whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm border-purple-500 text-purple-400">
+                        Dividir por Capítulos
+                    </button>
+                    <button id="tab-replace" class="tab-button whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm border-transparent text-gray-500 hover:text-gray-300 hover:border-gray-500">
+                        Substituir Texto
+                    </button>
+                </nav>
+            </div>
+
+            <!-- Conteúdo da Aba: Dividir PDF -->
+            <div id="content-split" class="tab-content active">
+                <p class="mb-4 text-center text-gray-400">Esta função identifica "Capítulo X" nos seus PDFs e agrupa todos os capítulos encontrados num único ficheiro .zip.</p>
+                <div class="flex justify-center mt-4">
+                    <!-- CORREÇÃO: Estilos aplicados diretamente no botão -->
+                    <button id="split-pdf-btn" class="bg-purple-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-purple-700 transition-all duration-300 disabled:bg-gray-700 disabled:text-gray-400 disabled:cursor-not-allowed shadow-lg hover:shadow-purple-500/30 flex items-center justify-center gap-2" disabled>
+                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        Dividir e Gerar .ZIP
+                    </button>
+                </div>
+                <div id="split-output" class="mt-8"></div>
+            </div>
+
+            <!-- Conteúdo da Aba: Substituir Texto -->
+            <div id="content-replace" class="tab-content">
+                <p class="mb-4 text-gray-400">Esta função só processa o primeiro ficheiro selecionado.</p>
+                <div id="replacements-container">
+                </div>
+                <button id="add-replacement-btn" class="mt-4 text-purple-400 font-semibold hover:text-purple-300 transition duration-300 flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                    Adicionar outra substituição
+                </button>
+                <div class="flex justify-center mt-6">
+                    <!-- CORREÇÃO: Estilos aplicados diretamente no botão -->
+                    <button id="replace-text-btn" class="bg-purple-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-purple-700 transition-all duration-300 disabled:bg-gray-700 disabled:text-gray-400 disabled:cursor-not-allowed shadow-lg hover:shadow-purple-500/30 flex items-center justify-center gap-2" disabled>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="m9 12 2 2 4-4"></path></svg>
+                        Substituir Texto e Gerar PDF
+                    </button>
+                </div>
+                <div id="replace-output" class="mt-6"></div>
+            </div>
+            
+            <!-- Indicador de Carregamento -->
+            <div id="loader" class="hidden items-center justify-center mt-6">
+                <div class="loader ease-linear rounded-full border-4 border-t-4 border-gray-700 h-12 w-12"></div>
+                <p id="loader-text" class="ml-4 text-gray-300">A processar...</p>
+            </div>
+        </div>
+    </div>
+    
+    <footer class="text-center p-6 mt-4">
+        <p class="text-gray-500">Desenvolvido por kaleb0 com o apoio da kairos</p>
+        <a href="https://discord.gg/rMcvMngH" target="_blank" rel="noopener noreferrer" class="inline-flex items-center justify-center gap-2 mt-4 bg-purple-600/20 text-purple-300 font-bold py-2 px-6 rounded-full hover:bg-purple-600/40 hover:text-white transition duration-300">
+             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16"><path d="M13.545 2.907a13.2 13.2 0 0 0-3.257-1.011.05.05 0 0 0-.052.025c-.141.25-.297.577-.406.833a12.2 12.2 0 0 0-3.658 0 8.3 8.3 0 0 0-.412-.833.05.05 0 0 0-.052-.025c-1.125.194-2.22.534-3.257 1.011a.04.04 0 0 0-.021.037c.334 1.474.77 2.944 1.224 4.425a.07.07 0 0 0 .07.059c.217-.025.434-.06.65-.1a.07.07 0 0 0 .062-.037 13.2 13.2 0 0 0 1.6-2.025c.062-.093.138-.19.222-.283a.05.05 0 0 1 .022-.013.05.05 0 0 1 .044.003c.058.043.11.093.16.15.058.061.111.128.16.2.023.03.048.06.07.088a.05.05 0 0 1 .022.013c.222.36.46.74.722 1.148a.05.05 0 0 1-.014.058l-.116.06a.05.05 0 0 0-.029.044c.023.06.044.113.065.17a.05.05 0 0 0 .03.041c.21.06.42.108.63.14a.07.07 0 0 0 .07-.059c.454-1.48 1-2.95 1.224-4.425a.04.04 0 0 0-.022-.037m-6.44 5.34c-1.2 0-2.176-.944-2.176-2.103 0-1.158.976-2.103 2.176-2.103 1.2 0 2.176.945 2.176 2.103 0 1.158-.976 2.103-2.176 2.103m4.383 0c-1.2 0-2.176-.944-2.176-2.103 0-1.158.976-2.103 2.176-2.103 1.2 0 2.176.945 2.176 2.103 0 1.158-.976 2.103-2.176 2.103"/></svg>
+            Entrar no Discord
+        </a>
+    </footer>
+
+    <!-- Script do Web Worker -->
+    <script id="pdf-worker" type="javascript/worker">
+        self.importScripts('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
+        self.importScripts('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js');
+
+        self.onmessage = async (event) => {
+            const { pdfBytes, fileName } = event.data;
+            const startTime = Date.now();
+            try {
+                const doc = await self.pdfjsLib.getDocument({ data: pdfBytes }).promise;
+                const numPages = doc.numPages;
+                let chapterInfo = [];
+                for (let i = 1; i <= numPages; i++) {
+                    const page = await doc.getPage(i);
+                    const textContent = await page.getTextContent();
+                    const pageText = textContent.items.map(item => item.str).join('\n');
+                    const lines = pageText.split('\n');
+                    for (const line of lines) {
+                        const match = line.match(/(Capítulo\s*\d+.*)/i);
+                        if (match) {
+                            const fullTitle = match[1].trim();
+                            const numMatch = fullTitle.match(/Capítulo\s*(\d+)/i);
+                            if(numMatch) {
+                                const chapterNumber = parseInt(numMatch[1], 10);
+                                if (!chapterInfo.find(c => c[0] === chapterNumber)) {
+                                    chapterInfo.push([chapterNumber, i - 1, fullTitle]);
+                                }
+                            }
+                        }
+                    }
+                    const percentage = Math.round((i / numPages) * 100);
+                    const elapsedTime = (Date.now() - startTime) / 1000;
+                    const timePerpage = elapsedTime / i;
+                    const remainingTime = Math.round((numPages - i) * timePerpage);
+                    self.postMessage({ type: 'progress', payload: { percentage, currentPage: i, totalPages: numPages, remainingTime, } });
+                }
+                chapterInfo.sort((a, b) => a[0] - b[0]);
+                if (chapterInfo.length === 0) {
+                     self.postMessage({ type: 'result', payload: { fileName, chaptersData: [] } });
+                     return;
+                }
+                let chaptersData = [];
+                for (let i = 0; i < chapterInfo.length; i++) {
+                    const [chapterNum, startPage, chapterTitle] = chapterInfo[i];
+                    const endPage = (i + 1 < chapterInfo.length) ? chapterInfo[i+1][1] : numPages;
+                    let chapterTextContent = `# ${chapterTitle}\n\n`;
+                    for (let p = startPage; p < endPage; p++) {
+                        const page = await doc.getPage(p + 1);
+                        const textContent = await page.getTextContent();
+                        chapterTextContent += textContent.items.map(item => item.str).join(' ') + '\n\n';
+                    }
+                    chaptersData.push({ chapterNum, chapterTitle, chapterTextContent });
+                }
+                self.postMessage({ type: 'result', payload: { fileName, chaptersData } });
+            } catch (error) {
+                self.postMessage({ type: 'error', payload: error.message });
+            }
+        };
+    </script>
+
+    <script>
+        // Elementos da UI
+        const pdfUpload = document.getElementById('pdf-upload');
+        const fileListDisplay = document.getElementById('file-list');
+        const splitBtn = document.getElementById('split-pdf-btn');
+        const replaceBtn = document.getElementById('replace-text-btn');
+        const splitOutput = document.getElementById('split-output');
+        const replaceOutput = document.getElementById('replace-output');
+        const replacementsContainer = document.getElementById('replacements-container');
+        const addReplacementBtn = document.getElementById('add-replacement-btn');
+        const loader = document.getElementById('loader');
+        const loaderText = document.getElementById('loader-text');
+        const messageBox = document.getElementById('message-box');
+
+        const tabSplit = document.getElementById('tab-split');
+        const tabReplace = document.getElementById('tab-replace');
+        const contentSplit = document.getElementById('content-split');
+        const contentReplace = document.getElementById('content-replace');
+
+        let pdfFiles = [];
+        let allChaptersData = [];
+        let currentFileIndex = 0;
+
+        function showMessage(message, type = 'error') {
+            messageBox.textContent = message;
+            messageBox.className = `p-4 mb-4 rounded-lg text-white ${type === 'error' ? 'bg-red-500/80' : 'bg-blue-500/80'}`;
+            messageBox.style.display = 'block';
+            setTimeout(() => { messageBox.style.display = 'none'; }, 5000);
+        }
+        
+        function switchTab(activeTab, inactiveTab, activeContent, inactiveContent) {
+            activeTab.classList.add('border-purple-500', 'text-purple-400');
+            activeTab.classList.remove('border-transparent', 'text-gray-500');
+            inactiveTab.classList.remove('border-purple-500', 'text-purple-400');
+            inactiveTab.classList.add('border-transparent', 'text-gray-500');
+            activeContent.classList.add('active');
+            inactiveContent.classList.remove('active');
+        }
+
+        tabSplit.addEventListener('click', () => switchTab(tabSplit, tabReplace, contentSplit, contentReplace));
+        tabReplace.addEventListener('click', () => switchTab(tabReplace, tabSplit, contentReplace, contentSplit));
+        
+        function addReplacementFields(oldText = '', newText = '') {
+            const replacementRow = document.createElement('div');
+            replacementRow.className = 'grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 items-center';
+            replacementRow.innerHTML = `
+                <input type="text" placeholder="Texto Antigo" class="old-text-input w-full p-2 border border-gray-700 rounded-md bg-gray-800 text-white focus:ring-purple-500 focus:border-purple-500" value="${oldText}">
+                <input type="text" placeholder="Texto Novo" class="new-text-input w-full p-2 border border-gray-700 rounded-md bg-gray-800 text-white focus:ring-purple-500 focus:border-purple-500" value="${newText}">
+            `;
+            replacementsContainer.appendChild(replacementRow);
+        }
+
+        addReplacementBtn.addEventListener('click', () => addReplacementFields());
+        addReplacementFields();
+
+        pdfUpload.addEventListener('change', async (event) => {
+            pdfFiles = Array.from(event.target.files);
+            fileListDisplay.innerHTML = '';
+            if (pdfFiles.length > 0) {
+                const list = document.createElement('ul');
+                list.className = 'list-disc list-inside text-gray-400';
+                pdfFiles.forEach(file => {
+                    const listItem = document.createElement('li');
+                    listItem.textContent = file.name;
+                    list.appendChild(listItem);
+                });
+                fileListDisplay.appendChild(list);
+                splitBtn.disabled = false;
+                replaceBtn.disabled = false;
+            } else {
+                splitBtn.disabled = true;
+                replaceBtn.disabled = true;
+            }
+        });
+
+        function createFinalZip() {
+            loaderText.textContent = 'A criar ficheiro .zip...';
+            const zip = new JSZip();
+
+            allChaptersData.forEach(fileResult => {
+                if (fileResult.chaptersData.length > 0) {
+                    const folderName = fileResult.fileName.replace('.pdf', '');
+                    const folder = zip.folder(folderName);
+
+                    fileResult.chaptersData.forEach(chapter => {
+                        const { chapterNum, chapterTitle, chapterTextContent } = chapter;
+                        const safeTitle = chapterTitle.replace(/[^a-zA-Z0-9_ -]/g, '').replace(/\s+/g, '_');
+                        const txtFileName = `Capitulo_${chapterNum}_${safeTitle}.txt`;
+                        folder.file(txtFileName, chapterTextContent);
+                    });
+                }
+            });
+
+            if (Object.keys(zip.files).length === 0) {
+                showMessage("Nenhum capítulo foi encontrado em nenhum dos ficheiros para criar o .zip.");
+                loader.style.display = 'none';
+                return;
+            }
+
+            zip.generateAsync({type:"blob"})
+            .then(function(content) {
+                const url = URL.createObjectURL(content);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `capitulos_extraidos.zip`;
+                link.className = 'w-full text-center bg-green-600 p-3 rounded-lg hover:bg-green-700 transition-all duration-300 text-white font-bold flex items-center justify-center gap-2';
+                link.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>Descarregar capitulos_extraidos.zip`;
+                
+                splitOutput.innerHTML = '';
+                splitOutput.appendChild(link);
+                loader.style.display = 'none';
+            });
+        }
+
+        function processFile(index) {
+            if (index >= pdfFiles.length) {
+                createFinalZip();
+                return;
+            }
+
+            const file = pdfFiles[index];
+            const reader = new FileReader();
+
+            reader.onload = (e) => {
+                const pdfBytes = new Uint8Array(e.target.result);
+                
+                const workerScript = document.getElementById('pdf-worker').textContent;
+                const workerBlob = new Blob([workerScript], { type: 'application/javascript' });
+                const pdfWorker = new Worker(URL.createObjectURL(workerBlob));
+
+                pdfWorker.onmessage = (event) => {
+                    const { type, payload } = event.data;
+
+                    if (type === 'progress') {
+                        const { percentage, currentPage, totalPages, remainingTime } = payload;
+                        loaderText.textContent = `Ficheiro ${index + 1}/${pdfFiles.length}: ${percentage}% | Página ${currentPage} de ${totalPages}. ~${remainingTime}s restantes`;
+                    } else if (type === 'result') {
+                        allChaptersData.push(payload);
+                        pdfWorker.terminate();
+                        processFile(index + 1);
+                    } else if (type === 'error') {
+                        showMessage(`Ocorreu um erro no ficheiro ${file.name}: ${payload}`);
+                        pdfWorker.terminate();
+                        processFile(index + 1);
+                    }
+                };
+
+                pdfWorker.onerror = (error) => {
+                    showMessage(`Erro fatal no worker com o ficheiro ${file.name}: ${error.message}`);
+                    pdfWorker.terminate();
+                    processFile(index + 1);
+                };
+
+                pdfWorker.postMessage({ pdfBytes, fileName: file.name });
+            };
+
+            reader.readAsArrayBuffer(file);
+        }
+
+        splitBtn.addEventListener('click', async () => {
+            if (pdfFiles.length === 0) {
+                showMessage('Por favor, carregue um ou mais ficheiros PDF primeiro.');
+                return;
+            }
+            loader.style.display = 'flex';
+            splitOutput.innerHTML = '';
+            messageBox.style.display = 'none';
+            allChaptersData = [];
+            currentFileIndex = 0;
+            processFile(currentFileIndex);
+        });
+        
+        replaceBtn.addEventListener('click', async () => {
+             if (pdfFiles.length === 0) {
+                showMessage('Por favor, carregue um ficheiro PDF primeiro.');
+                return;
+            }
+            const replacements = [];
+            document.querySelectorAll('.old-text-input').forEach((input, index) => {
+                const oldText = input.value.trim();
+                const newText = document.querySelectorAll('.new-text-input')[index].value.trim();
+                if (oldText) {
+                    replacements.push({ oldText, newText });
+                }
+            });
+
+            if (replacements.length === 0) {
+                showMessage('Por favor, adicione pelo menos uma substituição válida.');
+                return;
+            }
+
+            loader.style.display = 'flex';
+            loaderText.textContent = 'A gerar cópia do PDF...';
+            replaceOutput.innerHTML = '';
+            messageBox.style.display = 'none';
+
+            try {
+                const file = pdfFiles[0];
+                const pdfBytes = await file.arrayBuffer();
+                const { PDFDocument } = PDFLib;
+                const pdfDoc = await PDFDocument.load(pdfBytes);
+                
+                const modifiedPdfBytes = await pdfDoc.save();
+                const blob = new Blob([modifiedPdfBytes], { type: 'application/pdf' });
+                const url = URL.createObjectURL(blob);
+                
+                const message = document.createElement('p');
+                message.className = 'text-purple-400 mb-4';
+                message.textContent = 'AVISO: A substituição de texto no navegador é complexa. Esta função gera uma cópia do seu PDF original.';
+                replaceOutput.appendChild(message);
+
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `${file.name.replace('.pdf', '')}_editado.pdf`;
+                link.className = 'block w-full text-center bg-green-600 p-3 rounded-lg hover:bg-green-700 transition-all duration-300 text-white font-bold flex items-center justify-center gap-2';
+                link.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>Baixar PDF Editado (Cópia)`;
+                replaceOutput.appendChild(link);
+
+            } catch (error) {
+                console.error('Erro ao substituir texto no PDF:', error);
+                showMessage(`Ocorreu um erro: ${error.message}`);
+            } finally {
+                loader.style.display = 'none';
+                loaderText.textContent = 'A processar...';
+            }
+        });
+    </script>
+</body>
+</html>
